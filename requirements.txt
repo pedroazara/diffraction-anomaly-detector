@@ -1,0 +1,6 @@
+# torch, torchvision, numpy, pandas, pillow, opencv-python-headless, streamlit, tqdm
+# come from the system Python 3.11 install (venv created with --system-site-packages)
+torchmetrics
+scikit-learn
+matplotlib
+grad-cam
