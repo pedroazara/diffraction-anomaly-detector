@@ -5,7 +5,18 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.metrics import average_precision_score, f1_score, precision_recall_curve
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    f1_score,
+    fbeta_score,
+    jaccard_score,
+    matthews_corrcoef,
+    precision_recall_curve,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 from torch.utils.data import DataLoader
 
 matplotlib.use("Agg")
@@ -75,6 +86,38 @@ def report(probs, targets, ths):
     df = pd.DataFrame(rows).set_index("classe")
     df.loc["MEDIA"] = df.mean(numeric_only=True)
     return df.round(3)
+
+
+def paper_metrics(probs, targets, ths):
+    preds = (probs >= ths).astype(int)
+
+    rows = []
+    for j, cls in enumerate(CLASSES):
+        y, p, s = targets[:, j], preds[:, j], probs[:, j]
+        rows.append(dict(
+            classe=cls,
+            Acc=accuracy_score(y, p),
+            MCC=matthews_corrcoef(y, p),
+            JI=jaccard_score(y, p, zero_division=0),
+            Prec=precision_score(y, p, zero_division=0),
+            Rec=recall_score(y, p, zero_division=0),
+            F1=f1_score(y, p, zero_division=0),
+            AUC=roc_auc_score(y, s),
+            AUC_bin=roc_auc_score(y, p),  # como no artigo: AUC de predições 0/1 = acurácia balanceada
+        ))
+    per_class = pd.DataFrame(rows).set_index("classe").round(3)
+
+    aggregate = pd.Series(dict(
+        Prec_M=precision_score(targets, preds, average="macro", zero_division=0),
+        Rec_M=recall_score(targets, preds, average="macro", zero_division=0),
+        F1_M=f1_score(targets, preds, average="macro", zero_division=0),
+        F2_M=fbeta_score(targets, preds, beta=2, average="macro", zero_division=0),
+        MCC_M=np.mean([matthews_corrcoef(targets[:, j], preds[:, j]) for j in range(len(CLASSES))]),
+        # imagem sem anomalia prevista sem anomalia conta como acerto (1), não como 0
+        JI=jaccard_score(targets, preds, average="samples", zero_division=1),
+        EMR=accuracy_score(targets, preds),
+    )).round(3)
+    return per_class, aggregate
 
 
 def plot_class_frequency(path: Path):
@@ -183,6 +226,12 @@ def main():
     print(report(p_val, y_val, thresholds))
     print("\n=== TESTE (held-out, limiares fixados na validação) ===")
     print(report(p_test, y_test, thresholds))
+
+    per_class, aggregate = paper_metrics(p_test, y_test, thresholds)
+    print("\n=== TESTE — métricas do artigo (Tabela 5: por classe, Tabela 3: agregadas) ===")
+    print(per_class)
+    print()
+    print(aggregate.to_string())
 
     if args.figures:
         figures_dir.mkdir(parents=True, exist_ok=True)
