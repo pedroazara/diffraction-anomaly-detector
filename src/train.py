@@ -89,6 +89,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Treina o classificador multirrótulo de anomalias.")
     parser.add_argument("--name", default="best_model", help="nome do checkpoint salvo em checkpoints/")
     parser.add_argument("--unfreeze", action="store_true", help="treina o backbone inteiro (fine-tuning)")
+    parser.add_argument("--init-from", default=None,
+                        help="checkpoint em checkpoints/ usado como ponto de partida (ex.: o do estágio 1)")
     parser.add_argument("--epochs", type=int, default=NUM_EPOCHS)
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     parser.add_argument("--lr", type=float, default=LEARNING_RATE, help="learning rate da cabeça")
@@ -114,6 +116,8 @@ def main():
                             num_workers=args.workers, pin_memory=True)
 
     model = build_model(pretrained=True, freeze_backbone=not args.unfreeze).to(DEVICE)
+    if args.init_from:
+        model.load_state_dict(torch.load(CHECKPOINTS_DIR / args.init_from, map_location=DEVICE))
 
     pos_weight = compute_pos_weight(train_ds)
     criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
@@ -121,7 +125,7 @@ def main():
 
     print(f"Experimento '{args.name}': backbone {'treinável' if args.unfreeze else 'congelado'}, "
           f"lr={args.lr}, backbone_lr={args.backbone_lr}, epochs={args.epochs}, amp={args.amp}, "
-          f"seed={args.seed}")
+          f"seed={args.seed}, init_from={args.init_from}")
 
     best_val_ap = 0.0
     history = []
