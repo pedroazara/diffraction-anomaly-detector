@@ -1,5 +1,8 @@
 import argparse
+import json
 import random
+import subprocess
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -23,7 +26,16 @@ from src.config import (
 )
 from src.dataset import RefleXDataset
 from src.model import build_model
-from src.transforms import eval_transform, train_transform
+from src.transforms import AUGMENTATIONS, build_train_transform, eval_transform
+
+
+def save_config(args):
+    git = subprocess.run(["git", "describe", "--always", "--dirty"], cwd=ROOT_DIR,
+                         capture_output=True, text=True).stdout.strip()
+    config = dict(vars(args), git_commit=git, started_at=datetime.now().isoformat(timespec="seconds"))
+    path = ROOT_DIR / "reports" / f"config_{args.name}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def set_seed(seed: int):
@@ -100,14 +112,17 @@ def parse_args():
     parser.add_argument("--workers", type=int, default=NUM_WORKERS)
     parser.add_argument("--amp", action="store_true", help="autocast bfloat16 (mais rápido em GPU Ada)")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--aug", choices=AUGMENTATIONS, default="rotate10",
+                        help="rotate10: flips + rotação de ±10°; dihedral: flips + rotações de 90°")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     set_seed(args.seed)
+    save_config(args)
 
-    train_ds = RefleXDataset(LABELS_TRAIN_CSV, transform=train_transform)
+    train_ds = RefleXDataset(LABELS_TRAIN_CSV, transform=build_train_transform(args.aug))
     val_ds = RefleXDataset(LABELS_VAL_CSV, transform=eval_transform)
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
@@ -125,7 +140,7 @@ def main():
 
     print(f"Experimento '{args.name}': backbone {'treinável' if args.unfreeze else 'congelado'}, "
           f"lr={args.lr}, backbone_lr={args.backbone_lr}, epochs={args.epochs}, amp={args.amp}, "
-          f"seed={args.seed}, init_from={args.init_from}")
+          f"seed={args.seed}, init_from={args.init_from}, aug={args.aug}")
 
     best_val_ap = 0.0
     history = []
