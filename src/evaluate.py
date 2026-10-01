@@ -49,11 +49,13 @@ plt.rcParams.update({
 
 
 @torch.no_grad()
-def predict_probs(model, dataset, batch_size=32):
+def predict_probs(model, dataset, batch_size=32, amp=False):
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     probs, targets = [], []
     for images, labels in loader:
-        probs.append(torch.sigmoid(model(images.to(DEVICE))).cpu())
+        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=amp):
+            logits = model(images.to(DEVICE))
+        probs.append(torch.sigmoid(logits.float()).cpu())
         targets.append(labels)
     return torch.cat(probs).numpy(), torch.cat(targets).numpy().astype(int)
 
@@ -208,6 +210,8 @@ def main():
     parser.add_argument("--checkpoint", default="baseline_resnet50_frozen.pt")
     parser.add_argument("--figures", action="store_true",
                         help="também exporta as figuras em reports/figures/<checkpoint>/")
+    parser.add_argument("--amp", action="store_true",
+                        help="inferência em bfloat16; use se o checkpoint foi treinado com --amp")
     args = parser.parse_args()
     figures_dir = FIGURES_DIR / Path(args.checkpoint).stem
 
@@ -218,10 +222,11 @@ def main():
     val_ds = RefleXDataset(LABELS_VAL_CSV, transform=eval_transform)
     test_ds = RefleXDataset(LABELS_TEST_CSV, transform=eval_transform)
 
-    p_val, y_val = predict_probs(model, val_ds)
-    p_test, y_test = predict_probs(model, test_ds)
+    p_val, y_val = predict_probs(model, val_ds, amp=args.amp)
+    p_test, y_test = predict_probs(model, test_ds, amp=args.amp)
 
     thresholds = best_thresholds(p_val, y_val)
+    print(f"Checkpoint: {args.checkpoint}  |  inferência: {'bfloat16 (--amp)' if args.amp else 'float32'}")
     print("\n=== VALIDAÇÃO ===")
     print(report(p_val, y_val, thresholds))
     print("\n=== TESTE (held-out, limiares fixados na validação) ===")
