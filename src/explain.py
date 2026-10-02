@@ -53,7 +53,7 @@ def predict_probs(model, dataset, batch_size=32):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Gera mapas Grad-CAM para exemplos do conjunto de teste.")
+    parser = argparse.ArgumentParser(description="Generate Grad-CAM maps for examples from the test set.")
     parser.add_argument("--checkpoint", default="baseline_resnet50_frozen.pt")
     parser.add_argument("--classes", nargs="+", default=DEFAULT_CLASSES)
     parser.add_argument("--out", default="gradcam.png")
@@ -96,13 +96,13 @@ def main():
         axes[r][c + 1].imshow(overlay)
         axes[r][c + 1].set_title(f"Grad-CAM  p={probs[idx, j]:.2f}", fontsize=10, color=PALETTE["accent"])
 
-    fig.suptitle("Onde o modelo olha: Grad-CAM sobre a última camada convolucional", y=1.0, fontsize=13)
+    fig.suptitle("Where the model looks: Grad-CAM on the last convolutional layer", y=1.0, fontsize=13)
     fig.tight_layout(h_pad=3.0)
     figures_dir.mkdir(parents=True, exist_ok=True)
     out_path = figures_dir / args.out
     fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=PALETTE["bg"])
     plt.close(fig)
-    print(f"Figura salva em {out_path}")
+    print(f"Figure saved to {out_path}")
 
 
 if __name__ == "__main__":

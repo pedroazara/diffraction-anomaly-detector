@@ -78,15 +78,15 @@ def report(probs, targets, ths):
     for j, cls in enumerate(CLASSES):
         has_pos = targets[:, j].sum() > 0
         rows.append(dict(
-            classe=cls,
-            positivos=int(targets[:, j].sum()),
+            anomaly=cls,
+            positives=int(targets[:, j].sum()),
             AP=average_precision_score(targets[:, j], probs[:, j]) if has_pos else np.nan,
             F1_0_5=f1_score(targets[:, j], probs[:, j] >= 0.5, zero_division=0),
-            limiar=ths[j],
-            F1_limiar=f1_score(targets[:, j], probs[:, j] >= ths[j], zero_division=0),
+            threshold=ths[j],
+            F1_threshold=f1_score(targets[:, j], probs[:, j] >= ths[j], zero_division=0),
         ))
-    df = pd.DataFrame(rows).set_index("classe")
-    df.loc["MEDIA"] = df.mean(numeric_only=True)
+    df = pd.DataFrame(rows).set_index("anomaly")
+    df.loc["MEAN"] = df.mean(numeric_only=True)
     return df.round(3)
 
 
@@ -97,7 +97,7 @@ def paper_metrics(probs, targets, ths):
     for j, cls in enumerate(CLASSES):
         y, p, s = targets[:, j], preds[:, j], probs[:, j]
         rows.append(dict(
-            classe=cls,
+            anomaly=cls,
             Acc=accuracy_score(y, p),
             MCC=matthews_corrcoef(y, p),
             JI=jaccard_score(y, p, zero_division=0),
@@ -105,9 +105,9 @@ def paper_metrics(probs, targets, ths):
             Rec=recall_score(y, p, zero_division=0),
             F1=f1_score(y, p, zero_division=0),
             AUC=roc_auc_score(y, s),
-            AUC_bin=roc_auc_score(y, p),  # como no artigo: AUC de predições 0/1 = acurácia balanceada
+            AUC_bin=roc_auc_score(y, p),  # as in the paper: AUC of 0/1 predictions = balanced accuracy
         ))
-    per_class = pd.DataFrame(rows).set_index("classe").round(3)
+    per_class = pd.DataFrame(rows).set_index("anomaly").round(3)
 
     aggregate = pd.Series(dict(
         Prec_M=precision_score(targets, preds, average="macro", zero_division=0),
@@ -115,7 +115,7 @@ def paper_metrics(probs, targets, ths):
         F1_M=f1_score(targets, preds, average="macro", zero_division=0),
         F2_M=fbeta_score(targets, preds, beta=2, average="macro", zero_division=0),
         MCC_M=np.mean([matthews_corrcoef(targets[:, j], preds[:, j]) for j in range(len(CLASSES))]),
-        # imagem sem anomalia prevista sem anomalia conta como acerto (1), não como 0
+        # an image with no anomaly predicted as having none counts as a hit (1), not 0
         JI=jaccard_score(targets, preds, average="samples", zero_division=1),
         EMR=accuracy_score(targets, preds),
     )).round(3)
@@ -130,8 +130,8 @@ def plot_class_frequency(path: Path):
     fig, ax = plt.subplots(figsize=(7, 4.2))
     ax.barh(np.arange(len(freq)), freq.values, color=PALETTE["accent"], height=0.6)
     ax.set_yticks(np.arange(len(freq)), freq.index)
-    ax.set_xlabel("% de imagens positivas (train)")
-    ax.set_title("Frequência de cada anomalia (desbalanceamento)")
+    ax.set_xlabel("% of positive images (train)")
+    ax.set_title("Frequency of each anomaly (class imbalance)")
     for i, cls in enumerate(freq.index):
         ax.text(freq[cls] + 1, i, f"{freq[cls]:.1f}%  (n={counts[cls]})", va="center", fontsize=8.5,
                 color=PALETTE["text"])
@@ -155,7 +155,7 @@ def plot_cooccurrence(path: Path):
         for j in range(len(CLASSES)):
             ax.text(j, i, f"{cond[i, j]:.2f}", ha="center", va="center", fontsize=7,
                     color="white" if cond[i, j] > 0.5 else PALETTE["text"])
-    ax.set_title("P(coluna | linha) — co-ocorrência de anomalias")
+    ax.set_title("P(column | row) — anomaly co-occurrence")
     plt.colorbar(im, fraction=0.046)
     fig.tight_layout()
     fig.savefig(path, dpi=150)
@@ -178,7 +178,7 @@ def plot_pr_curves(probs, targets, path: Path):
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1.02)
     axes[-1].axis("off")
-    fig.suptitle("Curvas Precision-Recall por classe — conjunto de TESTE (held-out)", y=1.02)
+    fig.suptitle("Per-class Precision-Recall curves — TEST set (held-out)", y=1.02)
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -196,9 +196,9 @@ def plot_error_leak(probs, targets, ths, path: Path):
     im = ax.imshow(leak, cmap="Reds", vmin=0, vmax=1)
     ax.set_xticks(range(len(CLASSES)), CLASSES, rotation=45, ha="right")
     ax.set_yticks(range(len(CLASSES)), CLASSES)
-    ax.set_xlabel("predita indevidamente")
-    ax.set_ylabel("verdadeira (perdida)")
-    ax.set_title("Falsos negativos da linha -> falsos positivos da coluna (teste)")
+    ax.set_xlabel("wrongly predicted")
+    ax.set_ylabel("true (missed)")
+    ax.set_title("Row false negatives -> column false positives (test)")
     plt.colorbar(im, fraction=0.046)
     fig.tight_layout()
     fig.savefig(path, dpi=150)
@@ -206,12 +206,12 @@ def plot_error_leak(probs, targets, ths, path: Path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Avalia um checkpoint na validação e no teste.")
+    parser = argparse.ArgumentParser(description="Evaluate a checkpoint on the validation and test sets.")
     parser.add_argument("--checkpoint", default="baseline_resnet50_frozen.pt")
     parser.add_argument("--figures", action="store_true",
-                        help="também exporta as figuras em reports/figures/<checkpoint>/")
+                        help="also export figures to reports/figures/<checkpoint>/")
     parser.add_argument("--amp", action="store_true",
-                        help="inferência em bfloat16; use se o checkpoint foi treinado com --amp")
+                        help="bfloat16 inference; use it if the checkpoint was trained with --amp")
     args = parser.parse_args()
     figures_dir = FIGURES_DIR / Path(args.checkpoint).stem
 
@@ -226,14 +226,14 @@ def main():
     p_test, y_test = predict_probs(model, test_ds, amp=args.amp)
 
     thresholds = best_thresholds(p_val, y_val)
-    print(f"Checkpoint: {args.checkpoint}  |  inferência: {'bfloat16 (--amp)' if args.amp else 'float32'}")
-    print("\n=== VALIDAÇÃO ===")
+    print(f"Checkpoint: {args.checkpoint}  |  inference: {'bfloat16 (--amp)' if args.amp else 'float32'}")
+    print("\n=== VALIDATION ===")
     print(report(p_val, y_val, thresholds))
-    print("\n=== TESTE (held-out, limiares fixados na validação) ===")
+    print("\n=== TEST (held-out, thresholds fixed on validation) ===")
     print(report(p_test, y_test, thresholds))
 
     per_class, aggregate = paper_metrics(p_test, y_test, thresholds)
-    print("\n=== TESTE — métricas do artigo (Tabela 5: por classe, Tabela 3: agregadas) ===")
+    print("\n=== TEST — paper metrics (Table 5: per class, Table 3: aggregate) ===")
     print(per_class)
     print()
     print(aggregate.to_string())
@@ -244,7 +244,7 @@ def main():
         plot_cooccurrence(figures_dir / "cooccurrence.png")
         plot_pr_curves(p_test, y_test, figures_dir / "pr_curves_test.png")
         plot_error_leak(p_test, y_test, thresholds, figures_dir / "error_confusion_test.png")
-        print(f"\nFiguras salvas em {figures_dir}")
+        print(f"\nFigures saved to {figures_dir}")
 
 
 if __name__ == "__main__":

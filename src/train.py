@@ -98,22 +98,22 @@ def build_optimizer(model, lr, backbone_lr, weight_decay):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Treina o classificador multirrótulo de anomalias.")
-    parser.add_argument("--name", default="best_model", help="nome do checkpoint salvo em checkpoints/")
-    parser.add_argument("--unfreeze", action="store_true", help="treina o backbone inteiro (fine-tuning)")
+    parser = argparse.ArgumentParser(description="Train the multilabel anomaly classifier.")
+    parser.add_argument("--name", default="best_model", help="checkpoint name saved under checkpoints/")
+    parser.add_argument("--unfreeze", action="store_true", help="train the whole backbone (fine-tuning)")
     parser.add_argument("--init-from", default=None,
-                        help="checkpoint em checkpoints/ usado como ponto de partida (ex.: o do estágio 1)")
+                        help="checkpoint in checkpoints/ used as the starting point (e.g. the stage 1 one)")
     parser.add_argument("--epochs", type=int, default=NUM_EPOCHS)
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
-    parser.add_argument("--lr", type=float, default=LEARNING_RATE, help="learning rate da cabeça")
+    parser.add_argument("--lr", type=float, default=LEARNING_RATE, help="head learning rate")
     parser.add_argument("--backbone-lr", type=float, default=None,
-                        help="learning rate do backbone; só faz sentido com --unfreeze")
+                        help="backbone learning rate; only meaningful with --unfreeze")
     parser.add_argument("--weight-decay", type=float, default=WEIGHT_DECAY)
     parser.add_argument("--workers", type=int, default=NUM_WORKERS)
-    parser.add_argument("--amp", action="store_true", help="autocast bfloat16 (mais rápido em GPU Ada)")
+    parser.add_argument("--amp", action="store_true", help="bfloat16 autocast (faster on Ada GPUs)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--aug", choices=AUGMENTATIONS, default="rotate10",
-                        help="rotate10: flips + rotação de ±10°; dihedral: flips + rotações de 90°")
+                        help="rotate10: flips + rotation of ±10°; dihedral: flips + 90° rotations")
     return parser.parse_args()
 
 
@@ -138,7 +138,7 @@ def main():
     criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = build_optimizer(model, args.lr, args.backbone_lr, args.weight_decay)
 
-    print(f"Experimento '{args.name}': backbone {'treinável' if args.unfreeze else 'congelado'}, "
+    print(f"Experiment '{args.name}': backbone {'trainable' if args.unfreeze else 'frozen'}, "
           f"lr={args.lr}, backbone_lr={args.backbone_lr}, epochs={args.epochs}, amp={args.amp}, "
           f"seed={args.seed}, init_from={args.init_from}, aug={args.aug}")
 
@@ -168,7 +168,7 @@ def main():
     history_path = ROOT_DIR / "reports" / f"history_{args.name}.csv"
     history_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(history).to_csv(history_path, index=False)
-    print(f"\nMelhor val_mAP: {best_val_ap:.4f}. Histórico em {history_path}")
+    print(f"\nBest val_mAP: {best_val_ap:.4f}. History saved to {history_path}")
 
 
 if __name__ == "__main__":
